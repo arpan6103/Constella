@@ -1,0 +1,1 @@
+Single-node key-value store

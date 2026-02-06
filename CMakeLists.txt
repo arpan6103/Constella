@@ -6,4 +6,5 @@ set(CMAKE_CXX_STANDARD 17)
 add_executable(constella-node
     src/main.cpp
     src/storage.cpp
+    src/server.cpp
 )

@@ -1,15 +1,13 @@
 #pragma once
-#include<unordered_map>
 #include<string>
 #include<mutex>
-using namespace std;
-
+#include<unordered_map>
 class Storage{
     public:
-    void put(const string& key,const string& value);
-    bool get(const string& key,string& value);
+    void put(const std::string& key,const std::string& value);
+    bool get(const std::string& key,std::string& value);
 
     private:
-    unordered_map<string,string>data_;
-    mutex mtx_;
+    std::unordered_map<std::string,std::string>data_;
+    std::mutex mtx_;
 };

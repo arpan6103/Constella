@@ -7,4 +7,5 @@ add_executable(constella-node
     src/main.cpp
     src/storage.cpp
     src/server.cpp
+    src/hash_ring.cpp
 )

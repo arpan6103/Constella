@@ -1,8 +1,12 @@
 #include "server.h"
 #include "pch.h"
 
-Server::Server(int port, Storage& storage)
-    : port_(port), storage_(storage){}
+Server::Server(int port, const std::string& node_id,const std::vector<std::string>& cluster_nodes, Storage& storage)
+    : port_(port),node_id_(node_id), storage_(storage){
+        for(const auto& node:cluster_nodes){
+            ring_.add_node(node);
+        }
+    }
 
 void Server::start(){
     server_fd_=socket(AF_INET,SOCK_STREAM,0);
@@ -27,10 +31,14 @@ void Server::start(){
         perror("listen");
         exit(EXIT_FAILURE);
     }
+    std::cout<<"server_fd: ";
+    std::cout<<server_fd_<<"\n";
     std::cout<<"Constella node listening on port "<<port_<<"\n";
 
     while(true){
         int client_fd=accept(server_fd_,nullptr,nullptr);
+        std::cerr<<"client_fd: ";
+        std::cerr<<client_fd;
         if(client_fd<0){
             perror("accept");
             continue;
@@ -61,18 +69,35 @@ void Server::handle_client(int client_fd){
                 response="ERROR\n";
             }
             else{
-                storage_.put(key,value);
-                response="OK\n";
+                std::string owner=ring_.get_node(key);
+                if(owner==node_id_){
+                    storage_.put(key,value);
+                    response="OK\n";
+                }
+                else{
+                    response=forward_request(owner,request);
+                }
             }
         }
         else if(command=="GET"){
             std::string key,value;
             ss>>key;
-            if(storage_.get(key,value)){
-                response="VALUE: "+value+"\n";
+            if(key.empty()){
+                response="ERROR\n";
             }
             else{
-                response="NOT FOUND\n";
+                std::string owner=ring_.get_node(key);
+                if(owner==node_id_){
+                    if(storage_.get(key,value)){
+                        response="VALUE: "+value+"\n";
+                    }
+                    else{
+                        response="NOT FOUND\n";
+                    }
+                }
+                else{
+                    response=forward_request(owner,request);
+                }
             }
         }
         else{
@@ -82,4 +107,36 @@ void Server::handle_client(int client_fd){
         write(client_fd,response.c_str(),response.size());
     }
     close(client_fd);
+}
+
+std::string Server::forward_request(const std::string& owner,const std::string& request){
+    size_t colon=owner.find(':');
+    std::string ip=owner.substr(0,colon);
+    int port=std::stoi(owner.substr(colon+1));
+
+    int sock=socket(AF_INET,SOCK_STREAM,0);
+    if(sock<0){
+        return "ERROR\n";
+    }
+    sockaddr_in addr{};
+    addr.sin_family=AF_INET;
+    addr.sin_port=htons(port);
+    inet_pton(AF_INET,ip.c_str(),&addr.sin_addr);
+
+    if(connect(sock,(struct sockaddr*)&addr,sizeof(addr))<0){
+        close(sock);
+        return "ERROR\n";
+    }
+    write(sock,request.c_str(),request.size());
+
+    char buffer[1024];
+    ssize_t bytes=read(sock,buffer,sizeof(buffer)-1);
+
+    close(sock);
+
+    if(bytes<=0){
+        return "ERROR\n";
+    }
+    buffer[bytes]='\0';
+    return std::string(buffer);
 }

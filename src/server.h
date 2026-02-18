@@ -5,7 +5,7 @@
 
 class Server{
     public:
-        Server(int port,const std::string& node_id,const std::vector<std::string>& cluster_nodes,Storage& storage);
+        Server(int port,const std::string& node_id,const std::vector<std::string>& cluster_nodes,Storage& storage,int replication_factor=2);
         void start();
 
     private:
@@ -13,7 +13,7 @@ class Server{
         int server_fd_{-1};
         std::string node_id_;
         HashRing ring_;
-
+        int replication_factor_;
         Storage& storage_;
         
         void handle_client(int client_fd);

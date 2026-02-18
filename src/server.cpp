@@ -1,8 +1,11 @@
 #include "server.h"
 #include "pch.h"
 
-Server::Server(int port, const std::string& node_id,const std::vector<std::string>& cluster_nodes, Storage& storage)
-    : port_(port),node_id_(node_id), storage_(storage){
+Server::Server(int port, const std::string& node_id,const std::vector<std::string>& cluster_nodes, Storage& storage,int replication_factor)
+    :   port_(port),
+        node_id_(node_id), 
+        storage_(storage),
+        replication_factor_(replication_factor){
         for(const auto& node:cluster_nodes){
             ring_.add_node(node);
         }
@@ -62,6 +65,8 @@ void Server::handle_client(int client_fd){
         ss>>command;
         std::string response;
 
+        std::cout<<"inside handle_client, request: "<<request<<" command: "<<command<<" end\n";
+
         if(command=="PUT"){
             std::string key,value;
             ss>>key>>value;
@@ -69,14 +74,20 @@ void Server::handle_client(int client_fd){
                 response="ERROR\n";
             }
             else{
-                std::string owner=ring_.get_node(key);
-                if(owner==node_id_){
-                    storage_.put(key,value);
-                    response="OK\n";
+                auto replicas=ring_.get_replicas(key,replication_factor_);
+                bool success=true;
+                for(const auto& node:replicas){
+                    if(node==node_id_){
+                        storage_.put(key,value);
+                    }
+                    else{
+                        std::string resp=forward_request(node,request);
+                        if(resp!="OK\n"){
+                            success=false;
+                        }
+                    }
                 }
-                else{
-                    response=forward_request(owner,request);
-                }
+                response=success ? "OK\n" : "ERROR\n";
             }
         }
         else if(command=="GET"){
@@ -86,17 +97,27 @@ void Server::handle_client(int client_fd){
                 response="ERROR\n";
             }
             else{
-                std::string owner=ring_.get_node(key);
-                if(owner==node_id_){
-                    if(storage_.get(key,value)){
-                        response="VALUE: "+value+"\n";
+                auto replicas=ring_.get_replicas(key,replication_factor_);
+                bool found=false;
+                for(const auto& node:replicas){
+                    if(node==node_id_){
+                        if(storage_.get(key,value)){
+                            response="VALUE: "+value+"\n";
+                            found=true;
+                            break;
+                        }
                     }
                     else{
-                        response="NOT FOUND\n";
+                        std::string resp=forward_request(node,request);
+                        if(resp.rfind("VALUE:",0)==0){
+                            response=resp;
+                            found=true;
+                            break;
+                        }
                     }
                 }
-                else{
-                    response=forward_request(owner,request);
+                if(!found){
+                    response="NOT FOUND\n";
                 }
             }
         }
@@ -110,6 +131,7 @@ void Server::handle_client(int client_fd){
 }
 
 std::string Server::forward_request(const std::string& owner,const std::string& request){
+    std::cout<<"inside forward request\n";
     size_t colon=owner.find(':');
     std::string ip=owner.substr(0,colon);
     int port=std::stoi(owner.substr(colon+1));

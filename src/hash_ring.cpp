@@ -35,3 +35,26 @@ std::vector<std::string> HashRing::get_all_nodes() const{
     }
     return nodes;
 }
+
+std::vector<std::string>HashRing::get_replicas(const std::string& key,int count) const{
+    std::vector<std::string>replicas;
+    if(ring_.empty() || count<1){
+        return replicas;
+    }
+    uint64_t hashed_key=hash(key);
+    auto it=ring_.lower_bound(hashed_key);
+    if(it==ring_.end()){
+        it=ring_.begin();
+    }
+    while(replicas.size()<static_cast<size_t>(count)){
+        replicas.push_back(it->second);
+        it++;
+        if(it==ring_.end()){
+            it=ring_.begin();
+        }
+        if(replicas.size()==ring_.size()){
+            break;
+        }
+    }
+    return replicas;
+}

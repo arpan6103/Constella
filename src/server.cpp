@@ -34,14 +34,10 @@ void Server::start(){
         perror("listen");
         exit(EXIT_FAILURE);
     }
-    std::cout<<"server_fd: ";
-    std::cout<<server_fd_<<"\n";
     std::cout<<"Constella node listening on port "<<port_<<"\n";
 
     while(true){
         int client_fd=accept(server_fd_,nullptr,nullptr);
-        std::cerr<<"client_fd: ";
-        std::cerr<<client_fd;
         if(client_fd<0){
             perror("accept");
             continue;
@@ -65,7 +61,6 @@ void Server::handle_client(int client_fd){
         ss>>command;
         std::string response;
 
-        std::cout<<"inside handle_client, request: "<<request<<" command: "<<command<<" end\n";
 
         if(command=="PUT"){
             std::string key,value,request_id;
@@ -74,12 +69,14 @@ void Server::handle_client(int client_fd){
                 response="ERROR\n";
             }
             else{
-                bool is_replica=!request_id.empty();
-                if(!is_replica){
+                bool is_coordinator=request_id.empty();
+                if(is_coordinator){
                     request_id=generate_request_id();
                 }
+                std::cout<<"inside handle_client put , request: "<<request<<request_id<<"\n";
                 {
                     std::lock_guard<std::mutex>lock(processed_mutex_);
+                    std::cout<<"inside this curly braces\n";
                     if(processed_requests_.count(request_id)){
                         response="OK\n";
                         write(client_fd,response.c_str(),response.size());
@@ -87,16 +84,27 @@ void Server::handle_client(int client_fd){
                     }
                     processed_requests_.insert(request_id);
                 }
-                storage_.put(key,value);
-                if(!is_replica){
-                    auto replicas=ring_.get_replicas(key,replication_factor_);
+                auto replicas=ring_.get_replicas(key,replication_factor_);
+                
+                std::cout<<"the replica for this key,inside put\n";
+                for(auto& node:replicas){
+                    std::cout<<node<<" ";
+                }
+                std::cout<<"\n";
+
+                if(is_coordinator){
                     for(const auto& node:replicas){
                         if(node==node_id_){
-                            continue;
+                            storage_.put(key,value);
                         }
-                        std::string replica_request="PUT "+key+" "+value+" "+request_id+"\n";
-                        forward_request(node,replica_request);
+                        else{
+                            std::string replica_request="PUT "+key+" "+value+" "+request_id+"\n";
+                            forward_request(node,replica_request);
+                        }
                     }
+                }
+                else{
+                    storage_.put(key,value);
                 }
                 response="OK\n";
             }
@@ -110,12 +118,6 @@ void Server::handle_client(int client_fd){
             else{
                 auto replicas=ring_.get_replicas(key,replication_factor_);
                 bool found=false;
-                std::cout<<"replicas for key ";
-                for(auto& r:replicas){
-                    std::cout<<r<<" ";
-                }
-                std::cout<<"\n";
-
                 for(const auto& node:replicas){
                     if(node==node_id_){
                         if(storage_.get(key,value)){

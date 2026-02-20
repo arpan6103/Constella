@@ -7,6 +7,7 @@
 #include<thread>
 #include<mutex>
 #include<vector>
+#include<atomic>
 
 
 #include<arpa/inet.h>

@@ -68,26 +68,37 @@ void Server::handle_client(int client_fd){
         std::cout<<"inside handle_client, request: "<<request<<" command: "<<command<<" end\n";
 
         if(command=="PUT"){
-            std::string key,value;
-            ss>>key>>value;
+            std::string key,value,request_id;
+            ss>>key>>value>>request_id;
             if(key.empty() || value.empty()){
                 response="ERROR\n";
             }
             else{
-                auto replicas=ring_.get_replicas(key,replication_factor_);
-                bool success=true;
-                for(const auto& node:replicas){
-                    if(node==node_id_){
-                        storage_.put(key,value);
+                bool is_replica=!request_id.empty();
+                if(!is_replica){
+                    request_id=generate_request_id();
+                }
+                {
+                    std::lock_guard<std::mutex>lock(processed_mutex_);
+                    if(processed_requests_.count(request_id)){
+                        response="OK\n";
+                        write(client_fd,response.c_str(),response.size());
+                        continue;
                     }
-                    else{
-                        std::string resp=forward_request(node,request);
-                        if(resp!="OK\n"){
-                            success=false;
+                    processed_requests_.insert(request_id);
+                }
+                storage_.put(key,value);
+                if(!is_replica){
+                    auto replicas=ring_.get_replicas(key,replication_factor_);
+                    for(const auto& node:replicas){
+                        if(node==node_id_){
+                            continue;
                         }
+                        std::string replica_request="PUT "+key+" "+value+" "+request_id+"\n";
+                        forward_request(node,replica_request);
                     }
                 }
-                response=success ? "OK\n" : "ERROR\n";
+                response="OK\n";
             }
         }
         else if(command=="GET"){
@@ -99,6 +110,12 @@ void Server::handle_client(int client_fd){
             else{
                 auto replicas=ring_.get_replicas(key,replication_factor_);
                 bool found=false;
+                std::cout<<"replicas for key ";
+                for(auto& r:replicas){
+                    std::cout<<r<<" ";
+                }
+                std::cout<<"\n";
+
                 for(const auto& node:replicas){
                     if(node==node_id_){
                         if(storage_.get(key,value)){
@@ -161,4 +178,8 @@ std::string Server::forward_request(const std::string& owner,const std::string& 
     }
     buffer[bytes]='\0';
     return std::string(buffer);
+}
+
+std::string Server::generate_request_id(){
+    return node_id_+"_"+std::to_string(request_counter_++);
 }

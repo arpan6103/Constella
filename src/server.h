@@ -8,7 +8,15 @@
 
 class Server{
     public:
-        Server(int port,const std::string& node_id,const std::vector<std::string>& cluster_nodes,Storage& storage,int replication_factor=2);
+        Server(
+            int port,
+            const std::string& node_id,
+            const std::vector<std::string>& cluster_nodes,
+            Storage& storage,
+            int replication_factor,
+            int write_quorum,
+            int read_quorum
+        );
         void start();
 
     private:
@@ -18,6 +26,8 @@ class Server{
         HashRing ring_;
         int replication_factor_;
         Storage& storage_;
+        int write_quorum_;
+        int read_quorum_;
 
         std::unordered_set<std::string>processed_requests_;
         std::mutex processed_mutex_;
@@ -27,5 +37,4 @@ class Server{
         std::string forward_request(const std::string& owner, const std::string& request);
 
         std::string generate_request_id();
-
 };

@@ -1,15 +1,18 @@
 #include "server.h"
 #include "pch.h"
 
-Server::Server(int port, const std::string& node_id,const std::vector<std::string>& cluster_nodes, Storage& storage,int replication_factor)
+Server::Server(int port, const std::string& node_id,const std::vector<std::string>& cluster_nodes, Storage& storage,int replication_factor,int write_quorum,int read_quorum)
     :   port_(port),
         node_id_(node_id), 
         storage_(storage),
-        replication_factor_(replication_factor){
-        for(const auto& node:cluster_nodes){
-            ring_.add_node(node);
+        replication_factor_(replication_factor),
+        write_quorum_(write_quorum),
+        read_quorum_(read_quorum)
+        {
+            for(const auto& node:cluster_nodes){
+                ring_.add_node(node);
+            }
         }
-    }
 
 void Server::start(){
     server_fd_=socket(AF_INET,SOCK_STREAM,0);
@@ -73,10 +76,8 @@ void Server::handle_client(int client_fd){
                 if(is_coordinator){
                     request_id=generate_request_id();
                 }
-                std::cout<<"inside handle_client put , request: "<<request<<request_id<<"\n";
                 {
                     std::lock_guard<std::mutex>lock(processed_mutex_);
-                    std::cout<<"inside this curly braces\n";
                     if(processed_requests_.count(request_id)){
                         response="OK\n";
                         write(client_fd,response.c_str(),response.size());
@@ -85,58 +86,88 @@ void Server::handle_client(int client_fd){
                     processed_requests_.insert(request_id);
                 }
                 auto replicas=ring_.get_replicas(key,replication_factor_);
-                
-                std::cout<<"the replica for this key,inside put\n";
-                for(auto& node:replicas){
-                    std::cout<<node<<" ";
+                std::cout<<"\n replicas for: "<< node_id_<<" \n";
+                for(auto node:replicas){
+                    std::cout<<node<< " ";
                 }
                 std::cout<<"\n";
 
                 if(is_coordinator){
+                    int success_count=0;
                     for(const auto& node:replicas){
                         if(node==node_id_){
                             storage_.put(key,value);
+                            success_count++;
                         }
                         else{
                             std::string replica_request="PUT "+key+" "+value+" "+request_id+"\n";
-                            forward_request(node,replica_request);
+                            std::string resp=forward_request(node,replica_request);
+                            if(resp=="OK\n"){
+                                success_count++;
+                            }
                         }
+                    }
+                    if(success_count>=write_quorum_){
+                        response="OK\n";
+                    }
+                    else{
+                        response="ERROR\n";
                     }
                 }
                 else{
                     storage_.put(key,value);
+                    response="OK\n";
                 }
-                response="OK\n";
             }
         }
+
         else if(command=="GET"){
-            std::string key,value;
-            ss>>key;
+            std::string key,request_id;
+            ss>>key>>request_id;
             if(key.empty()){
                 response="ERROR\n";
             }
             else{
+                bool is_coordinator=request_id.empty();
+                if(is_coordinator){
+                    request_id=generate_request_id();
+                }
                 auto replicas=ring_.get_replicas(key,replication_factor_);
-                bool found=false;
+                int success_count=0;
+                std::string final_value;
                 for(const auto& node:replicas){
+                    std::string resp;
                     if(node==node_id_){
+                        std::string value;
                         if(storage_.get(key,value)){
-                            response="VALUE: "+value+"\n";
-                            found=true;
-                            break;
+                            resp="VALUE: "+value+"\n";
+                        }
+                        else{
+                            resp="NOT FOUND\n";
                         }
                     }
                     else{
-                        std::string resp=forward_request(node,request);
-                        if(resp.rfind("VALUE:",0)==0){
-                            response=resp;
-                            found=true;
-                            break;
+                        if(is_coordinator){
+                            std::string forwarded="GET "+key+" "+request_id+"\n";
+                            resp=forward_request(node,forwarded);
+                        }
+                        else{
+                            continue;
                         }
                     }
+                    if(resp.rfind("VALUE:",0)==0){
+                        success_count++;
+                        final_value=resp;
+                    }
+                    if(success_count>=read_quorum_){
+                        break;
+                    }
                 }
-                if(!found){
-                    response="NOT FOUND\n";
+                if(success_count>=read_quorum_){
+                    response=final_value;
+                }
+                else{
+                    response="ERROR\n";
                 }
             }
         }

@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+
+  node1:
+    build: .
+    container_name: constella-node1
+    command: ./constella-node 6000 node1:6000
+    ports:
+      - "6000:6000"
+
+  node2:
+    build: .
+    container_name: constella-node2
+    command: ./constella-node 6001 node2:6001
+    ports:
+      - "6001:6001"
+
+  node3:
+    build: .
+    container_name: constella-node3
+    command: ./constella-node 6002 node3:6002
+    ports:
+      - "6002:6002"

@@ -11,9 +11,9 @@ int main(int argc,char*argv[]){
     int port=std::stoi(argv[1]);
     std::string node_id=argv[2];
     std::vector<std::string>cluster_nodes={
-        "127.0.0.1:6000",
-        "127.0.0.1:6001",
-        "127.0.0.1:6002"
+        "node1:6000",
+        "node2:6001",
+        "node3:6002"
     };
     Storage storage;
     Server server(port,node_id,cluster_nodes,storage,2,2,1);

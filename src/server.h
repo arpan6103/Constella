@@ -3,6 +3,7 @@
 #include "storage.h"
 #include "hash_ring.h"
 
+#include <atomic>
 #include<unordered_set>
 #include<unordered_map>
 #include<mutex>

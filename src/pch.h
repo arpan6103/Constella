@@ -11,6 +11,7 @@
 
 
 #include<arpa/inet.h>
+#include<netdb.h> 
 #include<unistd.h>
 #include<sys/socket.h>
 #include<chrono>

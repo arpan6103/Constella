@@ -195,35 +195,33 @@ void Server::handle_client(int client_fd){
     close(client_fd);
 }
 
-std::string Server::forward_request(const std::string& owner,const std::string& request){
-    size_t colon=owner.find(':');
-    std::string ip=owner.substr(0,colon);
-    int port=std::stoi(owner.substr(colon+1));
+std::string Server::forward_request(const std::string& owner, const std::string& request) {
+    size_t colon = owner.find(':');
+    std::string host = owner.substr(0, colon);
+    std::string port_str = owner.substr(colon + 1);
 
-    int sock=socket(AF_INET,SOCK_STREAM,0);
-    if(sock<0){
+    struct addrinfo hints{}, *res;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+
+    if (getaddrinfo(host.c_str(), port_str.c_str(), &hints, &res) != 0) {
         return "ERROR\n";
     }
-    sockaddr_in addr{};
-    addr.sin_family=AF_INET;
-    addr.sin_port=htons(port);
-    inet_pton(AF_INET,ip.c_str(),&addr.sin_addr);
 
-    if(connect(sock,(struct sockaddr*)&addr,sizeof(addr))<0){
-        close(sock);
-        return "ERROR\n";
+    int sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (sock < 0) { freeaddrinfo(res); return "ERROR\n"; }
+
+    if (connect(sock, res->ai_addr, res->ai_addrlen) < 0) {
+        freeaddrinfo(res); close(sock); return "ERROR\n";
     }
-    write(sock,request.c_str(),request.size());
+    freeaddrinfo(res);
 
+    write(sock, request.c_str(), request.size());
     char buffer[1024];
-    ssize_t bytes=read(sock,buffer,sizeof(buffer)-1);
-
+    ssize_t bytes = read(sock, buffer, sizeof(buffer) - 1);
     close(sock);
-
-    if(bytes<=0){
-        return "ERROR\n";
-    }
-    buffer[bytes]='\0';
+    if (bytes <= 0) return "ERROR\n";
+    buffer[bytes] = '\0';
     return std::string(buffer);
 }
 

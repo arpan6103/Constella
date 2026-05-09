@@ -1,5 +1,16 @@
+# Build
 build/
+
+# Executables
 *.o
 *.out
+constella-node
 
+# macOS
 .DS_Store
+
+# VSCode
+.vscode/
+
+# Docker logs
+*.log

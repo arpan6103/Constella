@@ -3,6 +3,8 @@ project(constella)
 
 set(CMAKE_CXX_STANDARD 17)
 
+include_directories(include)
+
 add_executable(constella-node
     src/main.cpp
     src/storage.cpp

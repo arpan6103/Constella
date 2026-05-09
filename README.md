@@ -175,6 +175,7 @@ Docker networking enables internal service discovery between nodes.
 
 - POSIX Sockets
 - TCP/IP
+- Docker Internal DNS / Service Discovery
 
 ## Concurrency
 
@@ -344,8 +345,3 @@ Potential future enhancements:
 - Concurrent Networking
 
 ---
-
-# Author
-
-Arpan Chauhan
-

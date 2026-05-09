@@ -1,9 +1,13 @@
 #include "hash_ring.h"
 
 
-uint64_t HashRing::hash(const std::string& input) const{
-    std::hash<std::string>hasher;
-    return static_cast<uint64_t>(hasher(input));
+uint64_t HashRing::hash(const std::string& input) const {
+    uint64_t hash = 14695981039346656037ULL; // FNV offset basis
+    for (unsigned char c : input) {
+        hash ^= c;
+        hash *= 1099511628211ULL;            // FNV prime
+    }
+    return hash;
 }
 
 void HashRing::add_node(const std::string& node_id){

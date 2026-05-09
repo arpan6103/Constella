@@ -7,10 +7,12 @@ Server::Server(int port, const std::string& node_id,const std::vector<std::strin
         storage_(storage),
         replication_factor_(replication_factor),
         write_quorum_(write_quorum),
-        read_quorum_(read_quorum)
+        read_quorum_(read_quorum),
+        cluster_nodes_(cluster_nodes)
         {
             for(const auto& node:cluster_nodes){
                 ring_.add_node(node);
+                node_alive_[node]=true;
             }
         }
 
@@ -38,6 +40,7 @@ void Server::start(){
         exit(EXIT_FAILURE);
     }
     std::cout<<"Constella node listening on port "<<port_<<"\n";
+    std::thread(&Server::heartbeat_loop,this).detach();
 
     while(true){
         int client_fd=accept(server_fd_,nullptr,nullptr);
@@ -64,8 +67,11 @@ void Server::handle_client(int client_fd){
         ss>>command;
         std::string response;
 
+        if(command=="PING"){
+            response="PONG\n";
+        }
 
-        if(command=="PUT"){
+        else if(command=="PUT"){
             std::string key,value,request_id;
             ss>>key>>value>>request_id;
             if(key.empty() || value.empty()){
@@ -85,7 +91,12 @@ void Server::handle_client(int client_fd){
                     }
                     processed_requests_.insert(request_id);
                 }
-                auto replicas=ring_.get_replicas(key,replication_factor_);
+                std::vector<std::string>replicas;
+                {
+                    std::lock_guard<std::mutex>lock(ring_mutex_);
+                    replicas=ring_.get_replicas(key,replication_factor_);
+                }
+
                 std::cout<<"\n replicas for: "<< node_id_<<" \n";
                 for(auto node:replicas){
                     std::cout<<node<< " ";
@@ -132,7 +143,11 @@ void Server::handle_client(int client_fd){
                 if(is_coordinator){
                     request_id=generate_request_id();
                 }
-                auto replicas=ring_.get_replicas(key,replication_factor_);
+                std::vector<std::string>replicas;
+                {
+                    std::lock_guard<std::mutex>lock(ring_mutex_);
+                    replicas=ring_.get_replicas(key,replication_factor_);
+                }
                 int success_count=0;
                 std::string final_value;
                 for(const auto& node:replicas){
@@ -181,7 +196,6 @@ void Server::handle_client(int client_fd){
 }
 
 std::string Server::forward_request(const std::string& owner,const std::string& request){
-    std::cout<<"inside forward request\n";
     size_t colon=owner.find(':');
     std::string ip=owner.substr(0,colon);
     int port=std::stoi(owner.substr(colon+1));
@@ -215,4 +229,34 @@ std::string Server::forward_request(const std::string& owner,const std::string& 
 
 std::string Server::generate_request_id(){
     return node_id_+"_"+std::to_string(request_counter_++);
+}
+
+void Server::heartbeat_loop(){
+    while(true){
+        for(auto& node:cluster_nodes_){
+            if(node==node_id_){
+                continue;
+            }
+            std::string response=forward_request(node,"PING\n");
+            update_node_status(node,response=="PONG\n");
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+    }
+}
+
+void Server::update_node_status(const std::string& node, bool alive){
+    std::lock_guard<std::mutex>lock(ring_mutex_);
+    bool was_alive=node_alive_[node];
+    if(was_alive==alive){
+        return;
+    }
+    node_alive_[node]=alive;
+    if(alive){
+        ring_.add_node(node);
+        std::cout<<"Node recovered: "<< node<<"\n";
+    }
+    else{
+        ring_.remove_node(node);
+        std::cout<<"Node unavailable: "<<node<<"\n";
+    }
 }

@@ -4,6 +4,7 @@
 #include "hash_ring.h"
 
 #include<unordered_set>
+#include<unordered_map>
 #include<mutex>
 
 class Server{
@@ -29,12 +30,19 @@ class Server{
         int write_quorum_;
         int read_quorum_;
 
+        std::vector<std::string>cluster_nodes_;
+        std::unordered_map<std::string,bool>node_alive_;
+        std::mutex ring_mutex_;
+
         std::unordered_set<std::string>processed_requests_;
         std::mutex processed_mutex_;
         std::atomic<uint64_t>request_counter_{0};
 
         void handle_client(int client_fd);
         std::string forward_request(const std::string& owner, const std::string& request);
+
+        void heartbeat_loop();
+        void update_node_status(const std::string &node, bool alive);
 
         std::string generate_request_id();
 };

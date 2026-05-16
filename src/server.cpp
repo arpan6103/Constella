@@ -39,7 +39,7 @@ void Server::start(){
         perror("listen");
         exit(EXIT_FAILURE);
     }
-    std::cout<<"Constella node listening on port "<<port_<<"\n";
+    std::cout<<"Constella node listening on port "<<port_<<"";
     std::thread(&Server::heartbeat_loop,this).detach();
 
     while(true){
@@ -52,30 +52,56 @@ void Server::start(){
     }
 }
 
-void Server::handle_client(int client_fd){
-    char buffer[1024];
+bool Server::send_message(int fd, const std::string& msg){
+    uint32_t len=htonl(static_cast<uint32_t>(msg.size()));
+    if(write(fd,&len,4)!=4){
+        return false;
+    }
+    ssize_t sent=write(fd,msg.c_str(),msg.size());
+    return sent==static_cast<ssize_t>(msg.size());
+}
+std::string Server::read_message(int fd){
+    uint32_t len_net=0;
+    ssize_t n=read(fd,&len_net,4);
+    if(n!=4){
+        return "";
+    }
+    uint32_t len=ntohl(len_net);
+    if(len==0 || len>1*1024*1024){
+        return "";
+    }
+    std::string msg(len,'\0');
+    size_t received=0;
+    while(received<len){
+        ssize_t r=read(fd,&msg[received],len-received);
+        if(r<=0){
+            return "";
+        }
+        received+=r;
+    }
+    return msg;
+}
 
+void Server::handle_client(int client_fd){
     while(true){
-        ssize_t bytes=read(client_fd,buffer,sizeof(buffer)-1);
-        if(bytes<=0){
+        std::string request=read_message(client_fd);
+        if(request.empty()){
             break;
         }
-        buffer[bytes]='\0';
-        std::string request(buffer);
         std::stringstream ss(request);
         std::string command;
         ss>>command;
         std::string response;
 
         if(command=="PING"){
-            response="PONG\n";
+            response="PONG";
         }
 
         else if(command=="PUT"){
             std::string key,value,request_id;
             ss>>key>>value>>request_id;
             if(key.empty() || value.empty()){
-                response="ERROR\n";
+                response="ERROR";
             }
             else{
                 bool is_coordinator=request_id.empty();
@@ -85,8 +111,7 @@ void Server::handle_client(int client_fd){
                 {
                     std::lock_guard<std::mutex>lock(processed_mutex_);
                     if(processed_requests_.count(request_id)){
-                        response="OK\n";
-                        write(client_fd,response.c_str(),response.size());
+                        send_message(client_fd, "OK");
                         continue;
                     }
                     processed_requests_.insert(request_id);
@@ -97,11 +122,11 @@ void Server::handle_client(int client_fd){
                     replicas=ring_.get_replicas(key,replication_factor_);
                 }
 
-                std::cout<<"\n replicas for: "<< node_id_<<" \n";
+                std::cout<<" replicas for: "<< node_id_<<" ";
                 for(auto node:replicas){
                     std::cout<<node<< " ";
                 }
-                std::cout<<"\n";
+                std::cout<<"";
 
                 if(is_coordinator){
                     int success_count=0;
@@ -111,23 +136,23 @@ void Server::handle_client(int client_fd){
                             success_count++;
                         }
                         else{
-                            std::string replica_request="PUT "+key+" "+value+" "+request_id+"\n";
+                            std::string replica_request="PUT "+key+" "+value+" "+request_id+"";
                             std::string resp=forward_request(node,replica_request);
-                            if(resp=="OK\n"){
+                            if(resp=="OK"){
                                 success_count++;
                             }
                         }
                     }
                     if(success_count>=write_quorum_){
-                        response="OK\n";
+                        response="OK";
                     }
                     else{
-                        response="ERROR\n";
+                        response="ERROR";
                     }
                 }
                 else{
                     storage_.put(key,value);
-                    response="OK\n";
+                    response="OK";
                 }
             }
         }
@@ -136,7 +161,7 @@ void Server::handle_client(int client_fd){
             std::string key,request_id;
             ss>>key>>request_id;
             if(key.empty()){
-                response="ERROR\n";
+                response="ERROR";
             }
             else{
                 bool is_coordinator=request_id.empty();
@@ -155,15 +180,15 @@ void Server::handle_client(int client_fd){
                     if(node==node_id_){
                         std::string value;
                         if(storage_.get(key,value)){
-                            resp="VALUE: "+value+"\n";
+                            resp="VALUE: "+value+"";
                         }
                         else{
-                            resp="NOT FOUND\n";
+                            resp="NOT FOUND";
                         }
                     }
                     else{
                         if(is_coordinator){
-                            std::string forwarded="GET "+key+" "+request_id+"\n";
+                            std::string forwarded="GET "+key+" "+request_id+"";
                             resp=forward_request(node,forwarded);
                         }
                         else{
@@ -182,15 +207,14 @@ void Server::handle_client(int client_fd){
                     response=final_value;
                 }
                 else{
-                    response="ERROR\n";
+                    response="ERROR";
                 }
             }
         }
         else{
-            response="UNKNOWN COMMAND\n";
+            response="UNKNOWN COMMAND";
         }
-
-        write(client_fd,response.c_str(),response.size());
+        send_message(client_fd,response);
     }
     close(client_fd);
 }
@@ -205,24 +229,24 @@ std::string Server::forward_request(const std::string& owner, const std::string&
     hints.ai_socktype = SOCK_STREAM;
 
     if (getaddrinfo(host.c_str(), port_str.c_str(), &hints, &res) != 0) {
-        return "ERROR\n";
+        return "ERROR";
     }
 
     int sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (sock < 0) { freeaddrinfo(res); return "ERROR\n"; }
+    if (sock < 0) { freeaddrinfo(res); return "ERROR"; }
 
     if (connect(sock, res->ai_addr, res->ai_addrlen) < 0) {
-        freeaddrinfo(res); close(sock); return "ERROR\n";
+        freeaddrinfo(res); close(sock); return "ERROR";
     }
     freeaddrinfo(res);
-
-    write(sock, request.c_str(), request.size());
-    char buffer[1024];
-    ssize_t bytes = read(sock, buffer, sizeof(buffer) - 1);
+    
+    if(!send_message(sock,request)){
+        close(sock);
+        return "ERROR";
+    }
+    std::string response=read_message(sock);
     close(sock);
-    if (bytes <= 0) return "ERROR\n";
-    buffer[bytes] = '\0';
-    return std::string(buffer);
+    return response.empty() ? "ERROR" : response;
 }
 
 std::string Server::generate_request_id(){
@@ -235,8 +259,8 @@ void Server::heartbeat_loop(){
             if(node==node_id_){
                 continue;
             }
-            std::string response=forward_request(node,"PING\n");
-            update_node_status(node,response=="PONG\n");
+            std::string response=forward_request(node,"PING");
+            update_node_status(node,response=="PONG");
         }
         std::this_thread::sleep_for(std::chrono::seconds(2));
     }
@@ -251,10 +275,10 @@ void Server::update_node_status(const std::string& node, bool alive){
     node_alive_[node]=alive;
     if(alive){
         ring_.add_node(node);
-        std::cout<<"Node recovered: "<< node<<"\n";
+        std::cout<<"Node recovered: "<< node<<"";
     }
     else{
         ring_.remove_node(node);
-        std::cout<<"Node unavailable: "<<node<<"\n";
+        std::cout<<"Node unavailable: "<<node<<"";
     }
 }

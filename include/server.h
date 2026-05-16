@@ -31,6 +31,8 @@ class Server{
         int write_quorum_;
         int read_quorum_;
 
+        bool send_message(int fd,const std::string& msg);
+        std::string read_message(int fd);
         std::vector<std::string>cluster_nodes_;
         std::unordered_map<std::string,bool>node_alive_;
         std::mutex ring_mutex_;

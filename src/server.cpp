@@ -128,7 +128,7 @@ void Server::handle_client(int client_fd){
                 for(auto node:replicas){
                     std::cout<<node<< " ";
                 }
-                std::cout<<"";
+                std::cout<<"\n";
 
                 if(is_coordinator){
                     int success_count=0;
@@ -176,6 +176,7 @@ void Server::handle_client(int client_fd){
                     replicas=ring_.get_replicas(key,replication_factor_);
                 }
                 int success_count=0;
+                int local_quorum=is_coordinator ? read_quorum_ : 1;
                 std::string final_value;
                 for(const auto& node:replicas){
                     std::string resp;
@@ -201,11 +202,11 @@ void Server::handle_client(int client_fd){
                         success_count++;
                         final_value=resp;
                     }
-                    if(success_count>=read_quorum_){
+                    if(success_count>=local_quorum){
                         break;
                     }
                 }
-                if(success_count>=read_quorum_){
+                if(success_count>=local_quorum){
                     response=final_value;
                 }
                 else{

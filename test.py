@@ -39,8 +39,21 @@ send(n2, "PUT user2 testvalue")
 print(f"PUT via node2: {recv(n2)}")      # OK
 
 send(n1, "GET user2")
-print(f"GET via node1: {recv(n1)}")      # VALUE: testvalue
+print(f"GET via node1: {recv(n1)}")      # VALUE: testvaluef
 
 n1.close()
 n2.close()
 n3.close()
+
+s = make_client(6000)
+
+keys = [f"key{i}" for i in range(20)]
+for key in keys:
+    send(s, f"PUT {key} value{key}")
+    print(f"PUT {key}: {recv(s)}")
+
+for key in keys:
+    send(s, f"GET {key}")
+    print(f"GET {key}: {recv(s)}")
+
+s.close()

@@ -18,7 +18,7 @@ int main(int argc,char*argv[]){
         "node3:6002"
     };
     Storage storage;
-    Server server(port,node_id,cluster_nodes,storage,2,2,1);
+    Server server(port,node_id,cluster_nodes,storage,3,2,2);
     server.start();
 
     return 0;

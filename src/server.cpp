@@ -39,8 +39,9 @@ void Server::start(){
         perror("listen");
         exit(EXIT_FAILURE);
     }
-    std::cout<<"Constella node listening on port "<<port_<<"";
+    std::cout<<"Constella node listening on port "<<port_<<"\n";
     std::thread(&Server::heartbeat_loop,this).detach();
+    std::thread(&Server::cleanup_processed_requests,this).detach();
 
     while(true){
         int client_fd=accept(server_fd_,nullptr,nullptr);
@@ -60,6 +61,7 @@ bool Server::send_message(int fd, const std::string& msg){
     ssize_t sent=write(fd,msg.c_str(),msg.size());
     return sent==static_cast<ssize_t>(msg.size());
 }
+
 std::string Server::read_message(int fd){
     uint32_t len_net=0;
     ssize_t n=read(fd,&len_net,4);
@@ -114,7 +116,7 @@ void Server::handle_client(int client_fd){
                         send_message(client_fd, "OK");
                         continue;
                     }
-                    processed_requests_.insert(request_id);
+                    processed_requests_[request_id]=std::chrono::steady_clock::now();
                 }
                 std::vector<std::string>replicas;
                 {
@@ -275,10 +277,27 @@ void Server::update_node_status(const std::string& node, bool alive){
     node_alive_[node]=alive;
     if(alive){
         ring_.add_node(node);
-        std::cout<<"Node recovered: "<< node<<"";
+        std::cout<<"Node recovered: "<< node<<"\n";
     }
     else{
         ring_.remove_node(node);
-        std::cout<<"Node unavailable: "<<node<<"";
+        std::cout<<"Node unavailable: "<<node<<"\n";
+    }
+}
+
+void Server::cleanup_processed_requests(){
+    while(true){
+        std::this_thread::sleep_for(std::chrono::seconds(30));
+        auto cutoff=std::chrono::steady_clock::now()-std::chrono::seconds(60);
+        std::lock_guard<std::mutex>lock(processed_mutex_);
+        for(auto it=processed_requests_.begin(); it!=processed_requests_.end();){
+            if(it->second<cutoff){
+                it=processed_requests_.erase(it);
+            }
+            else{
+                ++it;
+            }
+        }
+        std::cout<<"processed_requests_ size: "<<processed_requests_.size()<<"\n";
     }
 }

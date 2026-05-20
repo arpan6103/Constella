@@ -4,6 +4,8 @@
 
 
 int main(int argc,char*argv[]){
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    setvbuf(stderr, nullptr, _IONBF, 0);
     if(argc<3){
         std::cerr<<"Usage: ./constella-node <port> <node_id> \n";
         return 1;

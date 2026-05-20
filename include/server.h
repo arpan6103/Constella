@@ -37,7 +37,7 @@ class Server{
         std::unordered_map<std::string,bool>node_alive_;
         std::mutex ring_mutex_;
 
-        std::unordered_set<std::string>processed_requests_;
+        std::unordered_map<std::string,std::chrono::steady_clock::time_point>processed_requests_;
         std::mutex processed_mutex_;
         std::atomic<uint64_t>request_counter_{0};
 
@@ -48,4 +48,5 @@ class Server{
         void update_node_status(const std::string &node, bool alive);
 
         std::string generate_request_id();
+        void cleanup_processed_requests();
 };

@@ -3,7 +3,6 @@ import socket, struct
 def send(sock, msg):
     encoded = msg.encode()
     sock.sendall(struct.pack('>I', len(encoded)) + encoded)
-
 def recv(sock):
     raw = sock.recv(4)
     if len(raw) < 4: return ""

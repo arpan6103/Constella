@@ -17,7 +17,7 @@ int main(int argc,char*argv[]){
         "node2:6001",
         "node3:6002"
     };
-    Storage storage;
+    Storage storage("/data/wal_"+node_id+".log");
     Server server(port,node_id,cluster_nodes,storage,3,2,2);
     server.start();
 

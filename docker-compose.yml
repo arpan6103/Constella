@@ -1,13 +1,14 @@
 version: '3.8'
 
 services:
-
   node1:
     build: .
     container_name: constella-node1
     command: ./constella-node 6000 node1:6000
     ports:
       - "6000:6000"
+    volumes:
+      - node1_data:/data
 
   node2:
     build: .
@@ -15,6 +16,8 @@ services:
     command: ./constella-node 6001 node2:6001
     ports:
       - "6001:6001"
+    volumes:
+      - node2_data:/data
 
   node3:
     build: .
@@ -22,3 +25,10 @@ services:
     command: ./constella-node 6002 node3:6002
     ports:
       - "6002:6002"
+    volumes:
+      - node3_data:/data
+
+volumes:
+  node1_data:
+  node2_data:
+  node3_data:
